@@ -11,7 +11,7 @@ import (
 type Binder struct {
     qualifiers  []string
     scope       BeanScope
-    beanFactory beanFactory
+    beanFactory *beanFactory
     priority    int
 }
 
@@ -44,22 +44,15 @@ func (b *Binder) Priority(priority int) *Binder {
 }
 
 func (b *Binder) Factory(factoryFunc interface{}) *Binder {
-    b.beanFactory = beanFactory{
-        factoryFunction: factoryFunc,
-        isMethod:        false,
-    }
+    b.beanFactory = newBeanFactory(factoryFunc, false)
     return b
 }
 
-func (b *Binder) buildBindKey() (*bindKey, error) {
-    e := b.validate()
-    if e != nil {
-        return nil, e
-    }
+func (b *Binder) buildBindKey() *bindKey {
     return &bindKey{
         qualifiers: b.qualifiers,
         type_:      reflect.TypeOf(b.beanFactory.factoryFunction).Out(0),
-    }, nil
+    }
 }
 
 // TODO: refactor this function
@@ -75,13 +68,13 @@ func (b *Binder) collectNestedBinders(res list.List) error {
         for i := 0; i < out.NumField(); i++ {
             field := out.Field(i)
             tag := field.Tag
-            factoryFuncName, hasFactoryFuncName := tag.Lookup("factory")
+            factoryFuncName, hasFactoryFuncName := tag.Lookup(TagFactory)
             if !hasFactoryFuncName {
                 continue
             }
-            qualifiers, hasQualifiers := tag.Lookup("qualifiers")
-            priority, hasPriority := tag.Lookup("priority")
-            scope, hasScope := tag.Lookup("scope")
+            qualifiers, hasQualifiers := tag.Lookup(TagQualifiers)
+            priority, hasPriority := tag.Lookup(TagPriority)
+            scope, hasScope := tag.Lookup(TagScope)
 
             names := []string{factoryFuncName}
             if hasQualifiers {
@@ -113,56 +106,9 @@ func (b *Binder) collectNestedBinders(res list.List) error {
             nestedBinder.beanFactory.isMethod = true
 
             res.Append(nestedBinder)
-            return nestedBinder.collectNestedBinders(res)
-        }
-    }
-    return nil
-}
-
-// TODO: use more expressive error messages
-func (b *Binder) validate() error {
-    if b.beanFactory.factoryFunction == nil {
-        return errors.New("Invalid factory function: nil")
-    }
-    factoryType := reflect.TypeOf(b.beanFactory.factoryFunction)
-    factoryValue := reflect.ValueOf(b.beanFactory.factoryFunction)
-    if factoryValue.Kind() != reflect.Func {
-        return errors.New("Invalid factory function: not a function")
-    }
-    // TODO: validate in params
-    //numIn := factoryType.NumIn()
-    //if numIn > 1 {
-    //    return errors.New("Invalid factory function: " +
-    //        "invalid number of IN parameters (must be 0 or 1)")
-    //}
-    //if numIn == 1 {
-    //    paramType := factoryType.In(0)
-    //    if paramType.Kind() != reflect.Struct {
-    //        return errors.New("Invalid factory function: " +
-    //            "invalid type of IN parameter (must be struct)")
-    //    }
-    //}
-    numOut := factoryType.NumOut()
-    if numOut != 1 && numOut != 2 {
-        return errors.New("Invalid factory function: " +
-            "invalid number of OUT parameters (must be 1 or 2)")
-    }
-    outParamType := factoryType.Out(0)
-    if outParamType.Kind() != reflect.Interface &&
-        outParamType.Kind() != reflect.Struct &&
-        !(outParamType.Kind() == reflect.Ptr &&
-            outParamType.Elem().Kind() != reflect.Interface &&
-            outParamType.Kind() != reflect.Struct) {
-        return errors.New("Invalid factory function: invalid type (" +
-            outParamType.Kind().String() +
-            ") of the first OUT parameters " +
-            "(must be interface or struct or pointer to interface or struct)")
-    }
-    if numOut == 2 {
-        if factoryType.Out(1).Kind() != reflect.Interface ||
-            !factoryType.Out(1).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
-            return errors.New("Invalid factory function: invalid type of " +
-                "the second OUT parameter (must implement 'error')")
+            if e := nestedBinder.collectNestedBinders(res); e != nil {
+                return e
+            }
         }
     }
     return nil

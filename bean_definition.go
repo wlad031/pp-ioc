@@ -13,7 +13,7 @@ type beanDefinition struct {
     priority     int
     paramTypes   []reflect.Type
     scope        BeanScope
-    factory      beanFactory
+    factory      *beanFactory
     graphIndex   int
     _bean        *bean // Do not use it directly!
 }

@@ -14,10 +14,8 @@ type contextGraph struct {
 }
 
 func newContextGraph() *contextGraph {
-    logger := logCtx.Get("IOC.ContextGraph")
-    logger.SetLevel(log.TraceLevel)
     return &contextGraph{
-        logger: logger,
+        logger: logCtx.Get("IOC.ContextGraph"),
         graph:  g.NewOrientedGraph(),
     }
 }

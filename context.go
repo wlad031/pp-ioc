@@ -2,11 +2,9 @@ package pp_ioc
 
 import (
     "github.com/pkg/errors"
-    log "github.com/sirupsen/logrus"
     "github.com/wlad031/pp-algo/list"
     logCtx "github.com/wlad031/pp-logging"
     "reflect"
-    "strings"
 )
 
 //region public
@@ -16,9 +14,13 @@ const (
     ContextBeanName     = "ApplicationContext"
     EnvironmentBeanName = "Environment"
 
-    QualifierTag = "qualifier"
-    ValueTag     = "value"
-    ValueTagSep  = ":"
+    TagValue      = "value"
+    TagFactory    = "factory"
+    TagQualifiers = "qualifiers"
+    TagPriority   = "priority"
+    TagScope      = "scope"
+
+    ValueTagSep = ":"
 )
 
 type Context interface {
@@ -40,17 +42,16 @@ type Context interface {
 
 // Context constructor
 func NewContext() Context {
-    logger := logCtx.Get("IOC")
-    logger.SetLevel(log.DebugLevel)
     ctx := contextImpl{
-        logger:          logger,
-        binders:         newBinderContainer(),
-        beanDefinitions: newBeanDefinitionList(),
-        graph:           newContextGraph(),
-        container:       newBeanContainer(),
-        postProcessors:  newPostProcessorContainer(),
-        environment:     newEnvironment(),
-        initialized:     false,
+        logger:               logCtx.Get("IOC"),
+        beanFactoryValidator: newBeanFactoryValidator(),
+        binders:              newBinderContainer(),
+        beanDefinitions:      newBeanDefinitionList(),
+        graph:                newContextGraph(),
+        container:            newBeanContainer(),
+        postProcessors:       newPostProcessorContainer(),
+        environment:          newEnvironment(),
+        initialized:          false,
     }
     return &ctx
 }
@@ -60,14 +61,15 @@ func NewContext() Context {
 //region private
 
 type contextImpl struct {
-    logger          *logCtx.NamedLogger
-    binders         *binderContainer
-    beanDefinitions *beanDefinitionContainer
-    graph           *contextGraph
-    container       *beanContainer
-    postProcessors  *postProcessorContainer
-    environment     Environment
-    initialized     bool // TODO: use this field somewhere
+    logger               *logCtx.NamedLogger
+    beanFactoryValidator *beanFactoryValidator
+    binders              *binderContainer
+    beanDefinitions      *beanDefinitionContainer
+    graph                *contextGraph
+    container            *beanContainer
+    postProcessors       *postProcessorContainer
+    environment          Environment
+    initialized          bool // TODO: use this field somewhere
 }
 
 func (ctx *contextImpl) NewBinder() *Binder {
@@ -163,7 +165,7 @@ func (ctx *contextImpl) bindEverything() error {
     return nil
 }
 
-// Creates the binder for context itself.
+// Creates a binder for context itself.
 // Other beans will be able to use it as a normal dependency.
 func (ctx *contextImpl) createContextBinder() *Binder {
     return NewBinder().
@@ -175,6 +177,8 @@ func (ctx *contextImpl) createContextBinder() *Binder {
         })
 }
 
+// Creates a binder for environment instance.
+// Other beans will be able to use it as a normal dependency.
 func (ctx *contextImpl) createEnvironmentBinder() *Binder {
     return NewBinder().
         Priority(EnvironmentPriority).
@@ -186,14 +190,13 @@ func (ctx *contextImpl) createEnvironmentBinder() *Binder {
 }
 
 func (ctx *contextImpl) bind(binder *Binder) error {
-    key, e := binder.buildBindKey()
-    if e != nil {
+    if e := ctx.beanFactoryValidator.validate(binder.beanFactory); e != nil {
         return e
     }
 
-    dependencies, paramTypes := collectDependencies(binder.beanFactory)
+    dependencies, paramTypes := binder.beanFactory.collectDependencies()
     definition := &beanDefinition{
-        key:          key,
+        key:          binder.buildBindKey(),
         dependencies: dependencies,
         paramTypes:   paramTypes,
         scope:        binder.scope,
@@ -207,14 +210,12 @@ func (ctx *contextImpl) bind(binder *Binder) error {
 func (ctx *contextImpl) addBeanToContainers(beanInstance *bean) error {
     ctx.container.add(beanInstance)
     if beanInstance.definition.isPropertySource() {
-        e := ctx.environment.addPropertySource(beanInstance)
-        if e != nil {
+        if e := ctx.environment.addPropertySource(beanInstance); e != nil {
             return e
         }
     }
     if beanInstance.definition.isPostProcessor() {
-        e := ctx.postProcessors.add(beanInstance)
-        if e != nil {
+        if e := ctx.postProcessors.add(beanInstance); e != nil {
             return e
         }
     }
@@ -282,7 +283,7 @@ func (ctx *contextImpl) instantiateBeans() error {
         for _, paramType := range definition.paramTypes {
 
             if paramType.Kind() == reflect.Struct {
-                if !definition.factory.isMethod {
+                if !(definition.factory.isMethod && paramIndex == 0) {
                     structParam := reflect.New(paramType).Elem()
                     for i := 0; i < paramType.NumField(); i++ {
                         dependency := definition.dependencies[paramIndex]
@@ -329,106 +330,4 @@ func (ctx *contextImpl) runPostProcessors() error {
     return nil
 }
 
-func collectDependencies(factoryFunc beanFactory) (
-    dependencies map[uint16]*dependency,
-    paramTypes []reflect.Type,
-) {
-    dependencies = map[uint16]*dependency{}
-
-    factoryType := reflect.TypeOf(factoryFunc.factoryFunction)
-    if factoryType.NumIn() == 0 {
-        return dependencies, nil
-    }
-
-    var paramIndex uint16 = 0
-    for i := 0; i < factoryType.NumIn(); i++ {
-        paramType := factoryType.In(i)
-
-        if paramType.Kind() == reflect.Struct {
-            if !factoryFunc.isMethod {
-                for j := 0; j < paramType.NumField(); j++ {
-                    structField := paramType.Field(j)
-                    // TODO: work with different kinds of params (structs, interfaces, primitives, arrays, etc.)
-                    if qualifierTag, ok := structField.Tag.Lookup(QualifierTag); ok {
-                        dependencies[paramIndex] = &dependency{
-                            name:         structField.Name,
-                            qualifier:    qualifierTag,
-                            hasQualifier: true,
-                            defaultValue: "",
-                            hasDefault:   false,
-                            type_:        structField.Type,
-                            index:        paramIndex,
-                            isBean:       true,
-                        }
-                        paramIndex += 1
-                        continue
-                    }
-                    if valueTag, ok := structField.Tag.Lookup(ValueTag); ok {
-                        splitRes := strings.Split(valueTag, ValueTagSep)
-                        var defaultValue string
-                        var hasDefault bool
-                        if len(splitRes) > 1 {
-                            defaultValue = splitRes[1]
-                            hasDefault = true
-                        }
-                        dependencies[paramIndex] = &dependency{
-                            name:         structField.Name,
-                            qualifier:    splitRes[0],
-                            hasQualifier: true,
-                            defaultValue: defaultValue,
-                            hasDefault:   hasDefault,
-                            type_:        structField.Type,
-                            index:        paramIndex,
-                            isBean:       false,
-                        }
-                        paramIndex += 1
-                        continue
-                    }
-                    dependencies[paramIndex] = &dependency{
-                        name:         structField.Name,
-                        qualifier:    "",
-                        hasQualifier: false,
-                        defaultValue: "",
-                        hasDefault:   false,
-                        type_:        structField.Type,
-                        index:        paramIndex,
-                        isBean:       true,
-                    }
-                    paramIndex += 1
-                }
-                paramTypes = append(paramTypes, paramType)
-            } else {
-                dependencies[paramIndex] = &dependency{
-                    name:         "",
-                    qualifier:    "",
-                    hasQualifier: false,
-                    defaultValue: "",
-                    hasDefault:   false,
-                    type_:        paramType,
-                    index:        paramIndex,
-                    isBean:       true,
-                }
-                paramTypes = append(paramTypes, paramType)
-                paramIndex += 1
-            }
-        } else {
-            dependencies[paramIndex] = &dependency{
-                name:         "",
-                qualifier:    "",
-                hasQualifier: false,
-                defaultValue: "",
-                hasDefault:   false,
-                type_:        paramType,
-                index:        paramIndex,
-                isBean:       true,
-            }
-            paramTypes = append(paramTypes, paramType)
-            paramIndex += 1
-        }
-    }
-
-    return dependencies, paramTypes
-}
-
 //endregion
-
