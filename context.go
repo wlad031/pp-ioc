@@ -17,10 +17,9 @@ const (
     TagValue      = "value"
     TagFactory    = "factory"
     TagQualifiers = "qualifiers"
+    TagQualifier  = "qualifier"
     TagPriority   = "priority"
     TagScope      = "scope"
-
-    ValueTagSep = ":"
 )
 
 type Context interface {
@@ -38,6 +37,10 @@ type Context interface {
     // Builds the entire container. Should be called
     // to instantiate all the beans.
     Build() error
+
+    // Refreshes the context. All bean definitions will stay the same,
+    // but all beans will be reinstantiated.
+    Refresh() error
 }
 
 // Context constructor
@@ -119,6 +122,7 @@ func (ctx *contextImpl) GetEnvironment() Environment {
 }
 
 func (ctx *contextImpl) Build() error {
+    ctx.logger.Info("Building the context...")
     e := ctx.bindEverything()
     if e != nil {
         return e
@@ -137,6 +141,18 @@ func (ctx *contextImpl) Build() error {
     }
     ctx.initialized = true
     return nil
+}
+
+func (ctx *contextImpl) Refresh() error {
+    panic("implement me") // FIXME: refresh server correctly
+    //ctx.logger.Info("Refreshing the context...")
+    //ctx.beanDefinitions = newBeanDefinitionList()
+    //ctx.graph = newContextGraph()
+    //ctx.container = newBeanContainer()
+    //ctx.postProcessors = newPostProcessorContainer()
+    //ctx.environment = newEnvironment()
+    //ctx.initialized = false
+    //return ctx.Build()
 }
 
 func (ctx *contextImpl) bindEverything() error {
@@ -207,15 +223,15 @@ func (ctx *contextImpl) bind(binder *Binder) error {
     return nil
 }
 
-func (ctx *contextImpl) addBeanToContainers(beanInstance *bean) error {
-    ctx.container.add(beanInstance)
-    if beanInstance.definition.isPropertySource() {
-        if e := ctx.environment.addPropertySource(beanInstance); e != nil {
+func (ctx *contextImpl) addBeanToContainers(bean *bean) error {
+    ctx.container.add(bean)
+    if bean.definition.isPropertySource() {
+        if e := ctx.environment.addPropertySource(bean); e != nil {
             return e
         }
     }
-    if beanInstance.definition.isPostProcessor() {
-        if e := ctx.postProcessors.add(beanInstance); e != nil {
+    if bean.definition.isPostProcessor() {
+        if e := ctx.postProcessors.add(bean); e != nil {
             return e
         }
     }
@@ -225,8 +241,8 @@ func (ctx *contextImpl) addBeanToContainers(beanInstance *bean) error {
 func (ctx *contextImpl) getDependencyValueInstance(dependency *dependency) (reflect.Value, error) {
     var propertyValue string
     var e error
-    if dependency.hasDefault {
-        propertyValue = ctx.environment.GetPropertyOrDefault(dependency.qualifier, dependency.defaultValue)
+    if dependency.valueProvider.hasDefault {
+        propertyValue = ctx.environment.GetPropertyOrDefault(dependency.qualifier, dependency.valueProvider.defaultValue)
     } else {
         propertyValue, e = ctx.environment.GetProperty(dependency.qualifier)
         if e != nil {

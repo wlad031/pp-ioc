@@ -2,7 +2,7 @@ package pp_ioc
 
 import (
     "github.com/pkg/errors"
-    ps "github.com/wlad031/pp-ioc/property_source"
+    ps "github.com/wlad031/pp-properties/property_source"
     "reflect"
     "strings"
 )

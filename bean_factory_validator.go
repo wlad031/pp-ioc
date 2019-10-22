@@ -4,6 +4,7 @@ import (
     "github.com/pkg/errors"
     logCtx "github.com/wlad031/pp-logging"
     "reflect"
+    "strings"
 )
 
 type beanFactoryValidator struct {
@@ -62,10 +63,14 @@ func (v *beanFactoryValidator) validate(beanFactory *beanFactory) error {
                 case reflect.Uint16:
                 case reflect.Uint32:
                 case reflect.Uint64:
-                case reflect.Uintptr:
                 case reflect.Float32:
                 case reflect.Float64:
                 case reflect.String:
+                    if e := validateValue(fieldType); e != nil {
+                        return errors.Wrap(e, "Invalid value field")
+                    }
+                    continue
+                case reflect.Uintptr:
                 case reflect.Interface:
                 case reflect.Struct:
                 case reflect.Ptr:
@@ -102,3 +107,15 @@ func (v *beanFactoryValidator) validate(beanFactory *beanFactory) error {
     }
     return nil
 }
+
+func validateValue(field reflect.StructField) error {
+    tag := field.Tag.Get("value")
+    if tag == "" {
+        return nil // FIXME: not correct behaviour
+    }
+    if !(strings.HasPrefix(tag, ValueTagPrefix) && strings.HasSuffix(tag, ValueTagSuffix)) {
+        return errors.New("Invalid value tag format")
+    }
+    return nil
+}
+

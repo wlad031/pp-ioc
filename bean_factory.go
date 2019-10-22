@@ -73,24 +73,18 @@ func (bf *beanFactory) collectDependencies() (
 
             for j := 0; j < structType.NumField(); j++ {
                 structField := structType.Field(j)
-                if qualifierTag, ok := structField.Tag.Lookup(TagQualifiers); ok {
+                if qualifierTag, ok := structField.Tag.Lookup(TagQualifier); ok {
                     dependencies[paramIndex] = newBeanDependency(
                         structField.Name,
                         qualifierTag, true,
                         structField.Type,
                         paramIndex)
                 } else if valueTag, ok := structField.Tag.Lookup(TagValue); ok {
-                    splitRes := strings.Split(valueTag, ValueTagSep)
-                    var defaultValue string
-                    var hasDefault bool
-                    if len(splitRes) > 1 {
-                        defaultValue = strings.Join(splitRes[1:], ValueTagSep)
-                        hasDefault = true
-                    }
+                    provider := parseValueTag(valueTag)
                     dependencies[paramIndex] = newValueDependency(
                         structField.Name,
-                        splitRes[0], true,
-                        defaultValue, hasDefault,
+                        provider.qualifier, true,
+                        provider,
                         structField.Type,
                         paramIndex)
                 } else {
@@ -108,4 +102,26 @@ func (bf *beanFactory) collectDependencies() (
     }
 
     return dependencies, paramTypes
+}
+
+const (
+    ValueTagSep    = ":"
+    ValueTagPrefix = "${"
+    ValueTagSuffix = "}"
+)
+
+func parseValueTag(tag string) *valueProvider {
+    tag = tag[2 : len(tag)-1] // remove prefix and suffix
+    splitRes := strings.Split(tag, ValueTagSep)
+    var defaultValue string
+    var hasDefault bool
+    if len(splitRes) > 1 {
+        defaultValue = strings.Join(splitRes[1:], ValueTagSep)
+        hasDefault = true
+    }
+    return &valueProvider{
+        qualifier:    splitRes[0],
+        defaultValue: defaultValue,
+        hasDefault:   hasDefault,
+    }
 }

@@ -6,16 +6,21 @@ import (
     "strconv"
 )
 
-type dependency struct {
-    name         string
+type valueProvider struct {
     qualifier    string
-    hasQualifier bool
     defaultValue string
     hasDefault   bool
-    type_        reflect.Type
-    index        uint16
-    isBean       bool
-    isValue      bool
+}
+
+type dependency struct {
+    name          string
+    qualifier     string
+    hasQualifier  bool
+    valueProvider *valueProvider
+    type_         reflect.Type
+    index         uint16
+    isBean        bool
+    isValue       bool
 }
 
 func newBeanDependency(
@@ -26,15 +31,14 @@ func newBeanDependency(
     index uint16,
 ) *dependency {
     return &dependency{
-        name:         name,
-        qualifier:    qualifier,
-        hasQualifier: hasQualifier,
-        defaultValue: "",
-        hasDefault:   false,
-        type_:        type_,
-        index:        index,
-        isBean:       true,
-        isValue:      false,
+        name:          name,
+        qualifier:     qualifier,
+        hasQualifier:  hasQualifier,
+        valueProvider: nil,
+        type_:         type_,
+        index:         index,
+        isBean:        true,
+        isValue:       false,
     }
 }
 
@@ -42,21 +46,19 @@ func newValueDependency(
     name string,
     qualifier string,
     hasQualifier bool,
-    defaultValue string,
-    hasDefault bool,
+    valueProvider *valueProvider,
     type_ reflect.Type,
     index uint16,
 ) *dependency {
     return &dependency{
-        name:         name,
-        qualifier:    qualifier,
-        hasQualifier: hasQualifier,
-        defaultValue: defaultValue,
-        hasDefault:   hasDefault,
-        type_:        type_,
-        index:        index,
-        isBean:       false,
-        isValue:      true,
+        name:          name,
+        qualifier:     qualifier,
+        hasQualifier:  hasQualifier,
+        valueProvider: valueProvider,
+        type_:         type_,
+        index:         index,
+        isBean:        false,
+        isValue:       true,
     }
 }
 
