@@ -8,7 +8,7 @@ import (
 )
 
 type contextGraph struct {
-    logger *logCtx.NamedLogger
+    logger logCtx.NamedLogger
     graph  g.OrientedGraph
     sorted []int
 }

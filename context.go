@@ -64,7 +64,7 @@ func NewContext() Context {
 //region private
 
 type contextImpl struct {
-    logger               *logCtx.NamedLogger
+    logger               logCtx.NamedLogger
     beanFactoryValidator *beanFactoryValidator
     binders              *binderContainer
     beanDefinitions      *beanDefinitionContainer

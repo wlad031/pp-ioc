@@ -6,7 +6,7 @@ import (
 )
 
 type postProcessorContainer struct {
-    logger *logCtx.NamedLogger
+    logger logCtx.NamedLogger
     ls     []PostProcessor
 }
 

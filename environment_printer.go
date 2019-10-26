@@ -14,7 +14,7 @@ func NewEnvironmentPrinter() EnvironmentPrinter {
 }
 
 type environmentPrinterImpl struct {
-    logger *logCtx.NamedLogger
+    logger logCtx.NamedLogger
 }
 
 func (ep *environmentPrinterImpl) PostProcess(ctx Context) error {

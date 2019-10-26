@@ -6,7 +6,7 @@ import (
 )
 
 type beanContainer struct {
-    logger *logCtx.NamedLogger
+    logger logCtx.NamedLogger
     ls     []*bean
 }
 

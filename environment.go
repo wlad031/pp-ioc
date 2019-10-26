@@ -23,7 +23,7 @@ func newEnvironment() Environment {
 }
 
 type environmentImpl struct {
-    logger          *logCtx.NamedLogger
+    logger          logCtx.NamedLogger
     propertySources []ps.PropertySource
 }
 

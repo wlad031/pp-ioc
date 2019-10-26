@@ -5,7 +5,7 @@ import (
 )
 
 type binderContainer struct {
-    logger *logCtx.NamedLogger
+    logger logCtx.NamedLogger
     ls     []*Binder
 }
 
